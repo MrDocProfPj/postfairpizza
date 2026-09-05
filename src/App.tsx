@@ -85,7 +85,6 @@ export default function App() {
       data={data}
       onSwitch={() => setScreen({ kind: "who" })}
       onStartOrder={() => setScreen({ kind: "party" })}
-      onAddPizza={(p) => setScreen({ kind: "builder", party: [p], current: p, n: Date.now() })}
       onExtras={(p) => setScreen({ kind: "extras", party: [p], current: p })}
     />
   );
@@ -149,14 +148,12 @@ function Home({
   data,
   onSwitch,
   onStartOrder,
-  onAddPizza,
   onExtras,
 }: {
   me: string;
   data: Data;
   onSwitch: () => void;
   onStartOrder: () => void;
-  onAddPizza: (p: string) => void;
   onExtras: (p: string) => void;
 }) {
   const removePizza = useMutation(api.orders.removePizza);
@@ -167,6 +164,9 @@ function Home({
 
   const doneMap = Object.fromEntries(data.people.map((p) => [p.name, p.done]));
   const ordered = [me, ...PEOPLE.filter((p) => p !== me)];
+  const pizzas = [...data.pizzas].sort((a, b) => a._creationTime - b._creationTime);
+  const extras = [...data.extras].sort((a, b) => a.item.localeCompare(b.item) || a.person.localeCompare(b.person));
+  const extraCount = extras.reduce((s, e) => s + e.qty, 0);
 
   return (
     <div className="page">
@@ -188,72 +188,75 @@ function Home({
       )}
 
       {!data.locked && (
-        <div className="cta-row">
+        <div className="cta-row stack">
           <button className="big primary" onClick={onStartOrder}>+ Add pizzas</button>
+          <button className="link center" onClick={() => onExtras(me)}>+ sides & drinks for {me}</button>
         </div>
       )}
 
-      <h2 className="section">Running order</h2>
-      <p className="sub small">
-        {data.pizzas.length} pizza{data.pizzas.length === 1 ? "" : "s"} so far · deal needs 2+
-      </p>
+      <div className="status-strip">
+        {ordered.map((p) => {
+          const done = !!doneMap[p];
+          return (
+            <button
+              key={p}
+              className={"status" + (done ? " done" : "")}
+              onClick={() => setDone({ name: p, done: !done })}
+              title={done ? "Tap to reopen" : "Tap to mark done"}
+            >
+              {done ? "✅" : "⏳"} {p}
+            </button>
+          );
+        })}
+      </div>
 
-      {ordered.map((person) => {
-        const pizzas = data.pizzas.filter((p) => p.person === person);
-        const extras = data.extras.filter((e) => e.person === person);
-        const done = !!doneMap[person];
-        const empty = pizzas.length === 0 && extras.length === 0;
-        return (
-          <div key={person} className={"card" + (person === me ? " mine" : "") + (done ? " done" : "")}>
-            <div className="card-head">
-              <h3>
-                {person}
-                {person === me && <span className="you">you</span>}
-              </h3>
-              <label className="toggle">
-                <input type="checkbox" checked={done} onChange={(e) => setDone({ name: person, done: e.target.checked })} />
-                <span>{done ? "✅ Done" : "Still picking"}</span>
-              </label>
+      <h2 className="section">
+        Pizzas <span className="count">{pizzas.length} · deal needs 2+</span>
+      </h2>
+      {pizzas.length === 0 && <p className="muted">No pizzas yet.</p>}
+      <div className="food">
+        {pizzas.map((p) => (
+          <div key={p._id} className="line food-line">
+            <div className="food-main">
+              <div className="line-title">
+                {p.toppings.length ? p.toppings.join(", ") : "Cheese pizza"}
+              </div>
+              <div className="line-sub">
+                {p.crust} · {p.sauce}
+                {p.cheese !== "Normal" && ` · ${p.cheese} cheese`}
+              </div>
             </div>
-            {empty && <p className="muted">Nothing yet.</p>}
-            {pizzas.map((p) => (
-              <div key={p._id} className="line">
-                <div>
-                  <div className="line-title">{p.crust} · {p.sauce}</div>
-                  <div className="line-sub">
-                    {p.toppings.length ? p.toppings.join(", ") : "Just cheese"}
-                    {p.cheese !== "Normal" && ` · ${p.cheese} cheese`}
-                  </div>
-                </div>
-                {!data.locked && (
-                  <button className="x" onClick={() => confirm("Remove this pizza?") && removePizza({ id: p._id as Id<"pizzas"> })}>
-                    ✕
-                  </button>
-                )}
-              </div>
-            ))}
-            {extras.map((e) => (
-              <div key={e._id} className="line">
-                <div className="line-title">
-                  {e.qty}× {e.item}
-                </div>
-                {!data.locked && (
-                  <button className="x" onClick={() => setExtra({ person, item: e.item, qty: 0 })}>
-                    ✕
-                  </button>
-                )}
-              </div>
-            ))}
+            <span className="tag">{p.person}</span>
             {!data.locked && (
-              <div className="card-actions">
-                <button className="link" onClick={() => onAddPizza(person)}>+ pizza</button>
-                <button className="link" onClick={() => onExtras(person)}>+ sides & drinks</button>
-              </div>
+              <button className="x" onClick={() => confirm("Remove this pizza?") && removePizza({ id: p._id as Id<"pizzas"> })}>
+                ✕
+              </button>
             )}
           </div>
-        );
-      })}
-      <p className="muted center small">Parker places the real order. Just pick your stuff and you're done.</p>
+        ))}
+      </div>
+
+      <h2 className="section">
+        Sides, sauces & drinks <span className="count">{extraCount}</span>
+      </h2>
+      {extras.length === 0 && <p className="muted">Nothing yet.</p>}
+      <div className="food">
+        {extras.map((e) => (
+          <div key={e._id} className="line food-line">
+            <div className="food-main">
+              <div className="line-title">{e.qty}× {e.item}</div>
+            </div>
+            <span className="tag">{e.person}</span>
+            {!data.locked && (
+              <button className="x" onClick={() => setExtra({ person: e.person, item: e.item, qty: 0 })}>
+                ✕
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <p className="muted center small">Parker places the real order. Tap your name above to toggle Done.</p>
     </div>
   );
 }

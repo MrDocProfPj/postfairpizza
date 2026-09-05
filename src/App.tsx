@@ -94,7 +94,8 @@ export default function App() {
 
 function Who({ onPick }: { onPick: (n: string) => void }) {
   return (
-    <div className="page">
+    <div className="page bottom">
+      <div className="spacer" />
       <h1>🍕 Post-Fair Pizza</h1>
       <p className="sub">Who are you?</p>
       <div className="stack">
@@ -116,7 +117,8 @@ function Party({ me, onStart, onSkip }: { me: string; onStart: (party: string[])
   const toggle = (p: string) => setSel((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
   const party = [me, ...others].filter((p) => sel.includes(p));
   return (
-    <div className="page">
+    <div className="page bottom">
+      <div className="spacer" />
       <h1>Hey {me} 👋</h1>
       <p className="sub">Ordering for anyone else? Tap them too.</p>
       <div className="chips big-chips">
@@ -129,7 +131,7 @@ function Party({ me, onStart, onSkip }: { me: string; onStart: (party: string[])
           </button>
         ))}
       </div>
-      <div className="stack" style={{ marginTop: 24 }}>
+      <div className="stack">
         <button className="big primary" disabled={party.length === 0} onClick={() => onStart(party)}>
           {party.length > 1 ? `Order for ${party.length} people →` : "Build my pizza →"}
         </button>
@@ -169,7 +171,7 @@ function Home({
   const extraCount = extras.reduce((s, e) => s + e.qty, 0);
 
   return (
-    <div className="page">
+    <div className={"page" + (data.locked ? "" : " has-sticky")}>
       <header className="top">
         <h1>🍕 Post-Fair Pizza</h1>
         <p className="sub">
@@ -185,13 +187,6 @@ function Home({
           onLock={(l) => setLocked({ locked: l })}
           onReset={() => confirm("Wipe EVERYONE's picks? This can't be undone.") && resetAll()}
         />
-      )}
-
-      {!data.locked && (
-        <div className="cta-row stack">
-          <button className="big primary" onClick={onStartOrder}>+ Add pizzas</button>
-          <button className="link center" onClick={() => onExtras(me)}>+ sides & drinks for {me}</button>
-        </div>
       )}
 
       <div className="status-strip">
@@ -257,6 +252,13 @@ function Home({
       </div>
 
       <p className="muted center small">Parker places the real order. Tap your name above to toggle Done.</p>
+
+      {!data.locked && (
+        <div className="sticky">
+          <button className="big primary" onClick={onStartOrder}>+ Add pizzas</button>
+          <button className="link center" onClick={() => onExtras(me)}>+ sides & drinks for {me}</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -411,7 +413,8 @@ function Builder({
 
   if (locked)
     return (
-      <div className="page">
+      <div className="page bottom">
+        <div className="spacer" />
         <div className="banner">🔒 Order's locked.</div>
         <button className="big" onClick={onCancel}>Back</button>
       </div>
@@ -420,7 +423,8 @@ function Builder({
   if (saved) {
     const others = party.filter((p) => p !== person);
     return (
-      <div className="page center-page">
+      <div className="page bottom center-text">
+        <div className="spacer" />
         <h1>🍕 Added!</h1>
         <p className="sub">{person}'s pizza is in.</p>
         <div className="stack">

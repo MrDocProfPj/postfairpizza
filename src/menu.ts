@@ -59,6 +59,8 @@ export const TOPPINGS: { group: string; items: { name: string; extra?: boolean }
   },
 ];
 
+export const SAUCE_CUPS = ["Garlic", "Ranch", "Marinara", "Blue Cheese", "Hot Buffalo", "Icing"];
+
 export const EXTRAS: { group: string; items: string[] }[] = [
   {
     group: "Sides",
@@ -70,10 +72,6 @@ export const EXTRAS: { group: string; items: string[] }[] = [
       "Cinnamon Twists",
       "Chocolate Lava Cakes",
     ],
-  },
-  {
-    group: "Sauce cups",
-    items: ["Garlic", "Ranch", "Marinara", "Blue Cheese", "Hot Buffalo", "Icing"],
   },
   {
     group: "Drinks",

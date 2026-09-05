@@ -2,18 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
-import { CHEESE, CRUSTS, EXTRAS, PEOPLE, SAUCES, TOPPINGS } from "./menu";
+import { CHEESE, CRUSTS, EXTRAS, PEOPLE, SAUCES, SAUCE_CUPS, TOPPINGS } from "./menu";
 
 type Screen =
   | { kind: "home" }
   | { kind: "who" }
-  | { kind: "builder"; person: string }
-  | { kind: "extras"; person: string };
+  | { kind: "party" }
+  | { kind: "builder"; party: string[]; current: string; n: number }
+  | { kind: "extras"; party: string[]; current: string };
 
 const isHost = new URLSearchParams(location.search).has("host");
 
 export default function App() {
   const data = useQuery(api.orders.all);
+  const setDone = useMutation(api.orders.setDone);
   const [me, setMe] = useState<string | null>(() => localStorage.getItem("me"));
   const [screen, setScreen] = useState<Screen>(() =>
     localStorage.getItem("me") ? { kind: "home" } : { kind: "who" }
@@ -31,19 +33,30 @@ export default function App() {
       <Who
         onPick={(n) => {
           setMe(n);
-          setScreen({ kind: "home" });
+          setScreen({ kind: "party" });
         }}
+      />
+    );
+
+  if (screen.kind === "party")
+    return (
+      <Party
+        me={me!}
+        onStart={(party) => setScreen({ kind: "builder", party, current: party[0], n: 0 })}
+        onSkip={() => setScreen({ kind: "home" })}
       />
     );
 
   if (screen.kind === "builder")
     return (
       <Builder
-        person={screen.person}
+        key={screen.n}
+        party={screen.party}
+        current={screen.current}
+        extras={data.extras}
         locked={data.locked}
-        onDone={(again) =>
-          setScreen(again ? { kind: "builder", person: screen.person } : { kind: "extras", person: screen.person })
-        }
+        onAnother={(person) => setScreen({ kind: "builder", party: screen.party, current: person, n: screen.n + 1 })}
+        onExtras={(person) => setScreen({ kind: "extras", party: screen.party, current: person })}
         onCancel={() => setScreen({ kind: "home" })}
       />
     );
@@ -51,10 +64,14 @@ export default function App() {
   if (screen.kind === "extras")
     return (
       <Extras
-        person={screen.person}
-        extras={data.extras.filter((e) => e.person === screen.person)}
+        party={screen.party}
+        current={screen.current}
+        extras={data.extras}
         locked={data.locked}
-        onDone={() => setScreen({ kind: "home" })}
+        onDone={async () => {
+          await Promise.all(screen.party.map((name) => setDone({ name, done: true })));
+          setScreen({ kind: "home" });
+        }}
       />
     );
 
@@ -63,8 +80,9 @@ export default function App() {
       me={me!}
       data={data}
       onSwitch={() => setScreen({ kind: "who" })}
-      onAddPizza={(p) => setScreen({ kind: "builder", person: p })}
-      onExtras={(p) => setScreen({ kind: "extras", person: p })}
+      onStartOrder={() => setScreen({ kind: "party" })}
+      onAddPizza={(p) => setScreen({ kind: "builder", party: [p], current: p, n: Date.now() })}
+      onExtras={(p) => setScreen({ kind: "extras", party: [p], current: p })}
     />
   );
 }
@@ -87,6 +105,37 @@ function Who({ onPick }: { onPick: (n: string) => void }) {
   );
 }
 
+/* ---------- Ordering for anyone else? ---------- */
+
+function Party({ me, onStart, onSkip }: { me: string; onStart: (party: string[]) => void; onSkip: () => void }) {
+  const [sel, setSel] = useState<string[]>([me]);
+  const others = PEOPLE.filter((p) => p !== me);
+  const toggle = (p: string) => setSel((s) => (s.includes(p) ? s.filter((x) => x !== p) : [...s, p]));
+  const party = [me, ...others].filter((p) => sel.includes(p));
+  return (
+    <div className="page">
+      <h1>Hey {me} 👋</h1>
+      <p className="sub">Ordering for anyone else? Tap them too.</p>
+      <div className="chips big-chips">
+        <button className={"chip" + (sel.includes(me) ? " on" : "")} onClick={() => toggle(me)}>
+          {me} (you)
+        </button>
+        {others.map((p) => (
+          <button key={p} className={"chip" + (sel.includes(p) ? " on" : "")} onClick={() => toggle(p)}>
+            {p}
+          </button>
+        ))}
+      </div>
+      <div className="stack" style={{ marginTop: 24 }}>
+        <button className="big primary" disabled={party.length === 0} onClick={() => onStart(party)}>
+          {party.length > 1 ? `Order for ${party.length} people →` : "Build my pizza →"}
+        </button>
+        <button className="link center" onClick={onSkip}>Just looking, take me to the order</button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- Home / running order ---------- */
 
 type Data = NonNullable<ReturnType<typeof useQuery<typeof api.orders.all>>>;
@@ -95,12 +144,14 @@ function Home({
   me,
   data,
   onSwitch,
+  onStartOrder,
   onAddPizza,
   onExtras,
 }: {
   me: string;
   data: Data;
   onSwitch: () => void;
+  onStartOrder: () => void;
   onAddPizza: (p: string) => void;
   onExtras: (p: string) => void;
 }) {
@@ -109,7 +160,6 @@ function Home({
   const setExtra = useMutation(api.orders.setExtra);
   const setLocked = useMutation(api.orders.setLocked);
   const resetAll = useMutation(api.orders.resetAll);
-  const [forWho, setForWho] = useState<string | null>(null);
 
   const doneMap = Object.fromEntries(data.people.map((p) => [p.name, p.done]));
   const ordered = [me, ...PEOPLE.filter((p) => p !== me)];
@@ -117,12 +167,10 @@ function Home({
   return (
     <div className="page">
       <header className="top">
-        <div>
-          <h1>🍕 Post-Fair Pizza</h1>
-          <p className="sub">
-            You're <b>{me}</b> · <a onClick={onSwitch}>not you?</a>
-          </p>
-        </div>
+        <h1>🍕 Post-Fair Pizza</h1>
+        <p className="sub">
+          You're <b>{me}</b> · <a onClick={onSwitch}>not you?</a>
+        </p>
       </header>
 
       {data.locked && <div className="banner">🔒 Order's been placed. Too late to change, sorry!</div>}
@@ -137,27 +185,7 @@ function Home({
 
       {!data.locked && (
         <div className="cta-row">
-          <button className="big primary" onClick={() => setForWho(me)}>
-            + Add a pizza
-          </button>
-        </div>
-      )}
-
-      {forWho && (
-        <div className="sheet-bg" onClick={() => setForWho(null)}>
-          <div className="sheet" onClick={(e) => e.stopPropagation()}>
-            <h2>Who's this pizza for?</h2>
-            <div className="chips">
-              {ordered.map((p) => (
-                <button key={p} className={"chip" + (p === forWho ? " on" : "")} onClick={() => setForWho(p)}>
-                  {p}
-                </button>
-              ))}
-            </div>
-            <button className="big primary" onClick={() => onAddPizza(forWho)}>
-              Build {forWho}'s pizza →
-            </button>
-          </div>
+          <button className="big primary" onClick={onStartOrder}>+ Add pizzas</button>
         </div>
       )}
 
@@ -221,7 +249,7 @@ function Home({
           </div>
         );
       })}
-      <p className="muted center small">Parker places the real order. Just pick your stuff and hit Done.</p>
+      <p className="muted center small">Parker places the real order. Just pick your stuff and you're done.</p>
     </div>
   );
 }
@@ -284,20 +312,67 @@ function HostPanel({ data, onLock, onReset }: { data: Data; onLock: (l: boolean)
   );
 }
 
+/* ---------- Shared: "for whom" switcher + sauce cup steppers ---------- */
+
+function ForRow({ party, current, onPick }: { party: string[]; current: string; onPick: (p: string) => void }) {
+  if (party.length < 2) return null;
+  return (
+    <div className="for-row">
+      <span className="for-label">For</span>
+      <div className="chips">
+        {party.map((p) => (
+          <button key={p} className={"chip small" + (p === current ? " on" : "")} onClick={() => onPick(p)}>
+            {p}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Steppers({ person, items, extras, locked }: { person: string; items: string[]; extras: Data["extras"]; locked: boolean }) {
+  const setExtra = useMutation(api.orders.setExtra);
+  const qty = (item: string) => extras.find((e) => e.person === person && e.item === item)?.qty ?? 0;
+  return (
+    <>
+      {items.map((item) => {
+        const q = qty(item);
+        return (
+          <div key={item} className={"line" + (q ? " has" : "")}>
+            <div className="line-title">{item}</div>
+            <div className="stepper">
+              <button disabled={locked || q === 0} onClick={() => setExtra({ person, item, qty: q - 1 })}>−</button>
+              <span>{q}</span>
+              <button disabled={locked} onClick={() => setExtra({ person, item, qty: q + 1 })}>+</button>
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 /* ---------- Pizza builder ---------- */
 
 function Builder({
-  person,
+  party,
+  current: initial,
+  extras,
   locked,
-  onDone,
+  onAnother,
+  onExtras,
   onCancel,
 }: {
-  person: string;
+  party: string[];
+  current: string;
+  extras: Data["extras"];
   locked: boolean;
-  onDone: (again: boolean) => void;
+  onAnother: (person: string) => void;
+  onExtras: (person: string) => void;
   onCancel: () => void;
 }) {
   const addPizza = useMutation(api.orders.addPizza);
+  const [person, setPerson] = useState(initial);
   const [crust, setCrust] = useState(CRUSTS[0].name);
   const [sauce, setSauce] = useState(SAUCES[0]);
   const [cheese, setCheese] = useState(CHEESE[0]);
@@ -325,26 +400,38 @@ function Builder({
     }
   };
 
-  if (locked) return <div className="page"><div className="banner">🔒 Order's locked.</div><button className="big" onClick={onCancel}>Back</button></div>;
+  if (locked)
+    return (
+      <div className="page">
+        <div className="banner">🔒 Order's locked.</div>
+        <button className="big" onClick={onCancel}>Back</button>
+      </div>
+    );
 
-  if (saved)
+  if (saved) {
+    const others = party.filter((p) => p !== person);
     return (
       <div className="page center-page">
         <h1>🍕 Added!</h1>
         <p className="sub">{person}'s pizza is in.</p>
         <div className="stack">
-          <button className="big" onClick={() => onDone(true)}>+ Another pizza for {person}</button>
-          <button className="big primary" onClick={() => onDone(false)}>Sides & drinks →</button>
+          <button className="big" onClick={() => onAnother(person)}>+ Another pizza for {person}</button>
+          {others.map((p) => (
+            <button key={p} className="big" onClick={() => onAnother(p)}>+ Pizza for {p}</button>
+          ))}
+          <button className="big primary" onClick={() => onExtras(person)}>Sides & drinks →</button>
         </div>
       </div>
     );
+  }
 
   return (
     <div className="page builder">
       <header className="top">
-        <a onClick={onCancel}>← back</a>
+        <a onClick={onCancel}>← back to order</a>
         <h1>{person}'s pizza</h1>
         <p className="sub">Medium · 3 toppings</p>
+        <ForRow party={party} current={person} onPick={setPerson} />
       </header>
 
       <h2 className="section">Crust</h2>
@@ -390,9 +477,13 @@ function Builder({
         </div>
       ))}
 
+      <h2 className="section">Sauce cups</h2>
+      <p className="sub small">These save instantly for {person}.</p>
+      <Steppers person={person} items={SAUCE_CUPS} extras={extras} locked={locked} />
+
       <div className="sticky">
         <button className="big primary" disabled={saving} onClick={save}>
-          {saving ? "Adding…" : `Add pizza (${toppings.length}/3 toppings)`}
+          {saving ? "Adding…" : `Add ${person}'s pizza (${toppings.length}/3 toppings)`}
         </button>
       </div>
     </div>
@@ -402,46 +493,39 @@ function Builder({
 /* ---------- Extras ---------- */
 
 function Extras({
-  person,
+  party,
+  current: initial,
   extras,
   locked,
   onDone,
 }: {
-  person: string;
+  party: string[];
+  current: string;
   extras: Data["extras"];
   locked: boolean;
   onDone: () => void;
 }) {
-  const setExtra = useMutation(api.orders.setExtra);
-  const qty = (item: string) => extras.find((e) => e.item === item)?.qty ?? 0;
-
+  const [person, setPerson] = useState(initial);
   return (
     <div className="page builder">
       <header className="top">
         <h1>Anything else for {person}?</h1>
         <p className="sub">Optional. Skip if you're good.</p>
+        <ForRow party={party} current={person} onPick={setPerson} />
       </header>
       {locked && <div className="banner">🔒 Order's locked.</div>}
       {EXTRAS.map((g) => (
         <div key={g.group}>
           <h2 className="section">{g.group}</h2>
-          {g.items.map((item) => {
-            const q = qty(item);
-            return (
-              <div key={item} className={"line" + (q ? " has" : "")}>
-                <div className="line-title">{item}</div>
-                <div className="stepper">
-                  <button disabled={locked || q === 0} onClick={() => setExtra({ person, item, qty: q - 1 })}>−</button>
-                  <span>{q}</span>
-                  <button disabled={locked} onClick={() => setExtra({ person, item, qty: q + 1 })}>+</button>
-                </div>
-              </div>
-            );
-          })}
+          <Steppers person={person} items={g.items} extras={extras} locked={locked} />
         </div>
       ))}
+      <h2 className="section">Sauce cups</h2>
+      <Steppers person={person} items={SAUCE_CUPS} extras={extras} locked={locked} />
       <div className="sticky">
-        <button className="big primary" onClick={onDone}>Done →</button>
+        <button className="big primary" onClick={onDone}>
+          {party.length > 1 ? "Done, finalize us →" : "Done, finalize me →"}
+        </button>
       </div>
     </div>
   );

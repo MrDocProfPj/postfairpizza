@@ -62,3 +62,9 @@ button:disabled { opacity: 0.4; cursor: default; }
 .sheet h2 { margin-bottom: 12px; }
 .sheet .chips { margin-bottom: 16px; }
 .sheet .chip { padding: 14px 18px; font-size: 18px; }
+
+.big-chips .chip { padding: 16px 20px; font-size: 18px; }
+.for-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.for-label { font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #9fb3d1; }
+.chip.small { padding: 8px 12px; font-size: 14px; }
+.link.center { text-align: center; width: 100%; }

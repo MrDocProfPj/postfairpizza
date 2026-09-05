@@ -108,6 +108,7 @@ function Home({
   const setDone = useMutation(api.orders.setDone);
   const setExtra = useMutation(api.orders.setExtra);
   const setLocked = useMutation(api.orders.setLocked);
+  const resetAll = useMutation(api.orders.resetAll);
   const [forWho, setForWho] = useState<string | null>(null);
 
   const doneMap = Object.fromEntries(data.people.map((p) => [p.name, p.done]));
@@ -126,7 +127,13 @@ function Home({
 
       {data.locked && <div className="banner">🔒 Order's been placed. Too late to change, sorry!</div>}
 
-      {isHost && <HostPanel data={data} onLock={(l) => setLocked({ locked: l })} />}
+      {isHost && (
+        <HostPanel
+          data={data}
+          onLock={(l) => setLocked({ locked: l })}
+          onReset={() => confirm("Wipe EVERYONE's picks? This can't be undone.") && resetAll()}
+        />
+      )}
 
       {!data.locked && (
         <div className="cta-row">
@@ -221,7 +228,7 @@ function Home({
 
 /* ---------- Host panel ---------- */
 
-function HostPanel({ data, onLock }: { data: Data; onLock: (l: boolean) => void }) {
+function HostPanel({ data, onLock, onReset }: { data: Data; onLock: (l: boolean) => void; onReset: () => void }) {
   const [open, setOpen] = useState(true);
   const lines = useMemo(() => {
     const m = new Map<string, number>();
@@ -262,6 +269,7 @@ function HostPanel({ data, onLock }: { data: Data; onLock: (l: boolean) => void 
             <button className={"link" + (data.locked ? "" : " danger")} onClick={() => onLock(!data.locked)}>
               {data.locked ? "🔓 Unlock" : "🔒 Lock order"}
             </button>
+            <button className="link danger" onClick={onReset}>🗑 Reset everything</button>
           </div>
           <div className="counts">
             {counts.map((c) => (

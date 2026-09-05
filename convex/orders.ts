@@ -80,3 +80,13 @@ export const setLocked = mutation({
     else await ctx.db.insert("settings", { locked });
   },
 });
+
+export const resetAll = mutation({
+  args: {},
+  handler: async (ctx) => {
+    for (const table of ["pizzas", "extras", "people", "settings"] as const) {
+      const rows = await ctx.db.query(table).collect();
+      for (const r of rows) await ctx.db.delete(r._id);
+    }
+  },
+});

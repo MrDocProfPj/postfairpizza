@@ -57,6 +57,10 @@ export default function App() {
         locked={data.locked}
         onAnother={(person) => setScreen({ kind: "builder", party: screen.party, current: person, n: screen.n + 1 })}
         onExtras={(person) => setScreen({ kind: "extras", party: screen.party, current: person })}
+        onFinish={async () => {
+          await Promise.all(screen.party.map((name) => setDone({ name, done: true })));
+          setScreen({ kind: "home" });
+        }}
         onCancel={() => setScreen({ kind: "home" })}
       />
     );
@@ -361,6 +365,7 @@ function Builder({
   locked,
   onAnother,
   onExtras,
+  onFinish,
   onCancel,
 }: {
   party: string[];
@@ -369,6 +374,7 @@ function Builder({
   locked: boolean;
   onAnother: (person: string) => void;
   onExtras: (person: string) => void;
+  onFinish: () => void;
   onCancel: () => void;
 }) {
   const addPizza = useMutation(api.orders.addPizza);
@@ -419,7 +425,10 @@ function Builder({
           {others.map((p) => (
             <button key={p} className="big" onClick={() => onAnother(p)}>+ Pizza for {p}</button>
           ))}
-          <button className="big primary" onClick={() => onExtras(person)}>Sides & drinks →</button>
+          <button className="big" onClick={() => onExtras(person)}>Sides & drinks →</button>
+          <button className="big primary" onClick={onFinish}>
+            Done, just pizza ✅
+          </button>
         </div>
       </div>
     );
